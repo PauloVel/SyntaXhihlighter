@@ -111,3 +111,9 @@ Selecting the tests to be executed / skipped
 ```bash
 export ERL_AFLAGS="-kernel shell_history enabled"
 ```
+
+
+## Video courses
+
+- https://www.youtube.com/watch?v=TWt-3I77OM0&list=PLTd5ehIj0goPm2HGj-YVy-IlIfBXDL9NC
+- https://www.youtube.com/watch?v=Q0Z1jqv6LW0&list=PLbV6TI03ZWYVQEC_Txq_cV0Uy_s16b0d3
