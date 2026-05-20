@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>C++ Code Display</title>
+  <style>
+    body { background-color: #1e1e1e; color: #d4d4d4; font-family: monospace; padding: 20px; line-height: 1.5; }
+    pre { margin: 0; }
+    .keyword { color: #569cd6; font-weight: bold; }
+    .preprocessor { color: #bd63c5; }
+    .comment { color: #6a9955; font-style: italic; }
+    .string { color: #ce9178; }
+    .number { color: #b5cea8; }
+    .operator { color: #b4b4b4; }
+    .identifier { color: #9cdcfe; }
+    .delimiter { color: #ffd700; }
+    .error { color: #ff0000; background-color: #3e1e1e; }
+  </style>
+</head>
+<body>
+  <pre><span class="preprocessor">#include</span> <span class="operator"><</span><span class="identifier">iostream</span><span class="operator">></span>
+
+<span class="comment">/* This is a multi-line comment box
+   It tests if our program handles big comments *</span><span class="operator">/</span>
+<span class="keyword">int</span> <span class="keyword">main</span><span class="error">(</span><span class="error">)</span> <span class="delimiter"></span><span class="delimiter">{</span>
+    <span class="keyword">int</span> <span class="identifier">count</span> <span class="operator">=</span> <span class="number">0</span><span class="delimiter">;</span>
+    <span class="keyword">int</span> <span class="identifier">hexValue</span> <span class="operator">=</span> <span class="number">0</span><span class="identifier">x2A</span><span class="error">;</span> <span class="comment">// Special number literal</span>
+
+    <span class="keyword">while</span> <span class="delimiter"></span><span class="error">(</span><span class="identifier">count</span> <span class="operator"><</span> <span class="number">10</span><span class="error">)</span> <span class="delimiter"></span><span class="delimiter">{</span>
+        <span class="keyword">if</span> <span class="delimiter"></span><span class="error">(</span><span class="identifier">count</span> <span class="operator">%</span> <span class="number">2</span> <span class="operator">==</span> <span class="number">0</span><span class="error">)</span> <span class="delimiter"></span><span class="delimiter">{</span>
+            <span class="keyword">std</span><span class="operator">::</span><span class="keyword">cout</span> <span class="operator"><<</span> <span class="string">"Even number!"</span> <span class="operator"><<</span> <span class="keyword">std</span><span class="operator">::</span><span class="keyword">endl</span><span class="delimiter">;</span>
+        <span class="delimiter"></span><span class="delimiter">}</span>
+        <span class="identifier">count</span> <span class="operator">+=</span> <span class="number">1</span><span class="delimiter">;</span>
+    <span class="delimiter"></span><span class="delimiter">}</span>
+    <span class="keyword">return</span> <span class="number">0</span><span class="delimiter">;</span>
+<span class="delimiter"></span><span class="delimiter">}</span>
+</pre>
+</body>
+</html>
