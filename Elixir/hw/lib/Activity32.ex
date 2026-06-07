@@ -128,10 +128,10 @@ defmodule Numeros do
 
       :par_o ->
         cond do
-          char in ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"] -> [:int, false]
-          char in String.graphemes("abcdefghijklmnopqrstuvwxyz") -> [:var, false]
-          char == "(" -> [:par_o, false]
-          char in ["+", "-"] -> [:sign, false]
+          char in ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"] -> [:int, :par_o]
+          char in String.graphemes("abcdefghijklmnopqrstuvwxyz") -> [:var, :par_o]
+          char == "(" -> [:par_o, :par_o]
+          char in ["+", "-"] -> [:sign, :par_o]
           true -> [:err, false]
         end
 

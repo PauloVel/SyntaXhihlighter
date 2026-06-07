@@ -1,5 +1,4 @@
 # To run this: elixir test_numeros.exs
-Code.require_file("Activity32.ex")
 
 IO.puts "--- Starting Tests ---"
 
