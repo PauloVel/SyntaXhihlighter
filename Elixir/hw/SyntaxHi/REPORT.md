@@ -3,26 +3,25 @@
 
 ---
 
-## 1. Overview
+## 1. What the program does
 
-This report documents the extension of the C++ syntax highlighter developed in Evidence 1. The program was refactored and extended in two directions:
+This is an extension of the C++ syntax highlighter from Evidence 1. Now it can process several files at once:
 
-1. **Sequential version** — processes all source files in a directory one at a time.
-2. **Parallel version** — processes all source files concurrently, assigning one Elixir task per file and distributing them across available CPU schedulers.
+- **Sequential mode**: reads each `.cpp`/`.h` file one by one and writes the highlighted HTML.
+- **Parallel mode**: uses `Task.async_stream` to process many files at the same time, taking advantage of multiple CPU cores.
+- **Benchmark mode**: runs both versions several times and compares their average execution time.
 
-Both versions share the same core tokenizer, which is implemented as a finite automaton (FSM) using Elixir pattern matching and recursion.
+The tokenizer is the same finite-state machine from before, but now it is applied to a whole directory instead of a single file.
 
 ---
 
-## 2. Solution Design
+## 2. How it works
 
-### 2.1 Core Algorithm — DFA Tokenizer
+### 2.1 Tokenizer
 
-The tokenizer is a **Finite State Machine** encoded with Elixir function clauses and `cond` expressions. Each character is classified into a column (letter, digit, operator, delimiter, etc.) and the current state determines whether to continue accumulating the lexeme or finalize it. When a token ends, the accumulated lexeme is wrapped in the appropriate HTML `<span>` tag and the automaton resets.
+The tokenizer walks through each character of the file and keeps a state (`:start`, `:id`, `:number`, `:string`, `:comment_block`, etc.). When the current character cannot continue the token, the lexeme is wrapped in an HTML `<span>` with the right CSS class and the state resets. Multi-line comments and strings work because the state is carried from one line to the next.
 
-States carry across line boundaries to correctly handle multi-line block comments (`/* … */`) and string literals.
-
-### 2.2 Sequential Version
+### 2.2 Sequential version
 
 ```elixir
 def process_sequential(files, output_dir, template) do
@@ -33,9 +32,9 @@ def process_sequential(files, output_dir, template) do
 end
 ```
 
-Files are processed in order using `Enum.each/2`. Each call to `process_file/3` is blocking — the next file starts only after the current one finishes.
+Files are processed with `Enum.each/2`, so each file finishes before the next one starts.
 
-### 2.3 Parallel Version
+### 2.3 Parallel version
 
 ```elixir
 def process_parallel(files, output_dir, template) do
@@ -51,116 +50,71 @@ def process_parallel(files, output_dir, template) do
 end
 ```
 
-`Task.async_stream/3` spawns one lightweight Elixir process per file. The `max_concurrency` is set to `System.schedulers_online()`, which matches the number of logical CPU cores available to the BEAM scheduler. `ordered: false` allows results to be collected as soon as each task finishes rather than waiting for the order of the input list.
+`Task.async_stream` creates one lightweight Elixir process per file. `max_concurrency` is set to the number of CPU cores, and `ordered: false` lets results come out as soon as each task finishes, which improves performance when files have different sizes.
 
 ---
 
-## 3. Bugs Fixed from Evidence 1
+## 3. Problems fixed from Evidence 1
 
-| # | Bug | Fix |
-|---|-----|-----|
-| 1 | Hardcoded `"SyntaxHi/"` path prefix | Paths are now built dynamically from arguments using `Path.join/2` |
-| 2 | Hardcoded template path | Template is loaded from `sample.html` using `Path.dirname(Path.absname(__ENV__.file))`, so the script works regardless of the current working directory |
-| 3 | Delimiters misclassified as errors | Rewrote the FSM transitions so that parentheses, braces, brackets, etc. are correctly classified as `delimiter` instead of `error` |
-| 4 | Regex per character for letter classification | Replaced by `String.contains?(@letters, char)`, which is faster than compiling and matching a regex on every character |
+| # | Problem | Fix |
+|---|---------|-----|
+| 1 | Paths were hardcoded | Now paths come from CLI arguments |
+| 2 | Template path depended on current directory | Now loaded with `Path.dirname(Path.absname(__ENV__.file))` |
+| 3 | Delimiters were marked as errors | Rewrote the FSM so `()`, `{}`, `[]`, etc. are `delimiter` |
+| 4 | Used a regex to check every letter | Replaced it with `String.contains?(@letters, char)` |
 
 ---
 
-## 4. Benchmark Results
+## 4. Benchmark results
 
-Benchmarks were run on the author's machine processing 8 sample C++ files. Each version was measured 5 times using `:timer.tc/1` and the average was computed. Runs were interleaved (sequential, parallel, sequential, parallel, …) so both versions benefit equally from operating-system caching.
+I ran the benchmark on my machine with the 8 sample files. Each version ran 5 times, alternating sequential and parallel runs.
 
 > **Machine specs:** *(add your CPU / RAM / OS here)*
 
-| Version     | Average (ms) | Minimum (ms) | Maximum (ms) |
-|-------------|--------------|--------------|--------------|
-| Sequential  | 135.844      | 116.989      | 166.558      |
-| Parallel    | 89.689       | 78.952       | 123.128      |
+| Version | Average time (ms) |
+|---------|-------------------|
+| Sequential | 135.844 |
+| Parallel | 89.689 |
 
 **Speedup = 135.844 / 89.689 ≈ 1.51×**
 
-The parallel version is consistently faster, although the speedup is below the theoretical maximum because file I/O and task scheduling overhead partially serialize the workload, especially for small files.
+The parallel version is faster, but the speedup is not huge because file I/O and task creation add some overhead. With bigger files the speedup would probably be larger.
 
 ---
 
-## 5. Time Complexity Analysis
+## 5. Complexity analysis
 
-Let:
-- **N** = total number of characters across all input files
-- **F** = number of files
-- **P** = number of parallel schedulers (CPU cores)
+Let **N** be the total number of characters in all files and **P** the number of CPU cores.
 
-### 5.1 Per-character work
+- **Per character**: the work is constant (a few comparisons and a `MapSet` lookup), so it is **O(1)**.
+- **Per file**: each character is visited once, so it is **O(n)** for a file with `n` characters.
+- **Sequential version**: all files are processed one after another, so the total time is **O(N)**.
+- **Parallel version**: the work is divided among `P` cores, so the theoretical time is **O(N / P)**. In practice it is less because of I/O and scheduling overhead.
 
-`classify_char/1` performs a fixed number of `String.contains?` checks, each O(|alphabet|) ≈ O(1) since all character sets have constant size. `next_state/2` performs two `Enum.at/2` accesses on constant-size lists — O(1). `wrap_html/2` is a constant-time pattern match and string interpolation.
-
-Therefore, processing a single character is **O(1)**.
-
-### 5.2 Per-file work
-
-Processing a file with `n` characters involves iterating over all `n` graphemes once. The DFA never backtracks (each character is consumed exactly once). Total per-file complexity: **O(n)**.
-
-### 5.3 Sequential version
-
-All F files are processed one after another:
-
-```
-T_seq = O(n₁) + O(n₂) + … + O(nF) = O(N)
-```
-
-where N = Σ nᵢ is the total character count. The sequential version is **O(N)**.
-
-### 5.4 Parallel version
-
-With P schedulers and F files distributed across them, assuming roughly equal file sizes (n̄ = N/F):
-
-```
-T_par ≈ O(N / P)   (ideal)
-```
-
-In practice, task spawning, scheduling overhead, and I/O contention reduce the ideal speedup, giving:
-
-```
-Speedup = T_seq / T_par ≈ P   (bounded by Amdahl's Law)
-```
-
-Since file I/O is the dominant cost for small files, the actual speedup observed (~2×) is lower than the theoretical maximum (~20×) on a 20-thread machine, because disk access serializes partially even when CPU work is parallel.
-
-### 5.5 Summary table
-
-| Version    | Time complexity | Space complexity |
-|------------|-----------------|------------------|
-| Sequential | O(N)            | O(n_max)         |
-| Parallel   | O(N / P)        | O(n_max · P)     |
-
-Space is O(n_max) per file since only one file's HTML is held in memory at a time per process. The parallel version holds up to P such buffers simultaneously.
+This matches the benchmark: the parallel time is lower but not exactly `N / P` because of the overhead mentioned above.
 
 ---
 
-## 6. Reflection on Ethical Implications
+## 6. Reflection
 
-Parallel computing and automated code analysis tools, such as the syntax highlighter built in this evidence, are foundational to modern software development infrastructure. Their societal implications are worth examining:
+Parallel tools like this one are useful because they save time when processing many files, but they also have social implications.
 
-**Accessibility and equity.** Developer tools that run faster and more efficiently lower the barrier to entry for software development. IDEs and code editors that leverage parallel highlighting, linting, and autocompletion make programming more accessible to students and developers working on lower-end hardware. However, if such tools are proprietary or paywalled, they can deepen the divide between well-funded and under-resourced developers.
+- **Accessibility**: faster tools help students and people with older computers. But if good tools are expensive or closed-source, they can create inequality.
+- **Energy**: running many cores at once uses more power. At large scale (cloud servers, CI/CD) this matters for the environment, so we should write efficient code.
+- **Trust**: if a highlighter misclassifies code, it can confuse the programmer. Automated tools need to be tested and reliable, especially in security-related contexts.
 
-**Environmental cost of parallelism.** Exploiting multi-core CPUs increases instantaneous power consumption. At scale — for example, cloud-based CI/CD systems that run millions of parallel jobs per day — the aggregate energy cost is significant. Engineers have an ethical responsibility to design parallel systems that are efficient not only in time but also in energy use.
-
-**Automation and labor.** Tools that automate code processing tasks (highlighting, formatting, linting, and increasingly, generation) can displace certain categories of software work. While they also amplify developer productivity, it is important for the industry to consider how to retrain and support workers whose roles are displaced by automation.
-
-**Correctness and trust.** A syntax highlighter that misclassifies tokens can mislead developers into misreading their own code. At a larger scale, automated analysis tools that produce incorrect results — particularly in security-sensitive contexts — can introduce subtle vulnerabilities. Verifying the correctness of computational tools is therefore an ethical obligation, not merely a technical one.
-
-In conclusion, the design and deployment of parallel computational tools must be guided not only by performance objectives but also by considerations of fairness, environmental responsibility, and the broader societal impact of automation.
+In general, performance is important, but it should not be the only goal. Tools should also be fair, efficient, and trustworthy.
 
 ---
 
-## 7. File Structure
+## 7. Files
 
 ```
 SyntaxHi/
-├── SyntaxHighlighterPro.exs   # Main program (sequential + parallel + benchmark)
-├── sample.html                # HTML/CSS template
-├── REPORT.md                  # This report
-├── example1.cpp               # Sample C++ source files
+├── SyntaxHighlighterPro.exs   # main program
+├── sample.html                # CSS template
+├── REPORT.md                  # this report
+├── example1.cpp               # sample C++ files
 ├── example2.cpp
 ├── example3.cpp
 ├── bst.cpp
@@ -170,34 +124,15 @@ SyntaxHi/
 └── strings.cpp
 ```
 
-## 8. Usage
-
-From the project directory:
+## 8. How to run it
 
 ```bash
 cd "/mnt/c/Users/paulo/OneDrive/Desktop/Semestre4/TC2037-202611/Elixir/hw/SyntaxHi"
 elixir SyntaxHighlighterPro.exs . ./html_output benchmark
 ```
 
-The CLI accepts an input directory, an output directory, and an optional mode:
+Modes:
 
-```bash
-elixir SyntaxHighlighterPro.exs <input_dir> <output_dir> [sequential|parallel|benchmark]
-```
-
-- `sequential` — processes all `.cpp` and `.h` files one at a time.
-- `parallel` — processes all source files concurrently with `Task.async_stream` (`ordered: false`).
-- `benchmark` (default) — runs both versions 5 times interleaved and reports average, min, max, and speedup.
-
-Example:
-
-```bash
-# Process all sources in the current folder sequentially
-elixir SyntaxHighlighterPro.exs . ./html_output sequential
-
-# Process all sources in parallel
-elixir SyntaxHighlighterPro.exs . ./html_output parallel
-
-# Run benchmark
-elixir SyntaxHighlighterPro.exs . ./html_output benchmark
-```
+- `sequential` — one file at a time
+- `parallel` — all files in parallel
+- `benchmark` — runs both and shows the speedup (default)

@@ -1,54 +1,16 @@
 defmodule Hw.SyntaxHighlighterPro do
-  @moduledoc """
-  Resaltador léxico de C++ escrito en Elixir (Evidencia 2).
+  # Resaltador de C++ para la Evidencia 2.
+  # Lee archivos .cpp/.h de un directorio y genera HTML resaltado.
+  # Tiene modo secuencial, paralelo y benchmark.
 
-  El programa lee archivos fuente en C++ desde un directorio de entrada,
-  identifica sus tokens mediante una máquina de estados finitos (FSM) y
-  genera documentos HTML+CSS resaltados en un directorio de salida.
-
-  Soporta procesamiento secuencial, procesamiento paralelo con
-  Task.async_stream y un modo benchmark que compara ambos.
-
-  Uso:
-    elixir SyntaxHighlighterPro.exs <input_dir> <output_dir> [mode]
-
-  Modos:
-    sequential : procesa los archivos uno por uno.
-    parallel   : procesa los archivos en paralelo con Task.async_stream.
-    benchmark  : ejecuta sequential y parallel, luego muestra la comparación.
-                 Valor por defecto.
-
-  Categorías léxicas reconocidas:
-    - preprocessor : directivas como #include, #define, #ifdef, etc.
-    - keyword      : palabras reservadas de C++
-    - identifier   : nombres de variables, funciones, clases, etc.
-    - number       : literales numéricos (enteros, decimales, hexadecimales)
-    - string       : cadenas entre comillas dobles
-    - char         : caracteres entre comillas simples
-    - comment      : comentarios de una línea // y multilínea /* */
-    - operator     : operadores aritméticos, lógicos, de comparación, etc.
-    - delimiter    : paréntesis, llaves, corchetes, punto y coma, coma, dos puntos
-    - error        : caracteres no reconocidos
-  """
-
-  # --------------------------------------------------------------------------
-  # Constantes léxicas de C++
-  # --------------------------------------------------------------------------
-
+  # palabras reservadas que usamos en clase / ejemplos
   @cpp_keywords MapSet.new([
-    "alignas", "alignof", "and", "and_eq", "asm", "auto", "bitand", "bitor",
-    "bool", "break", "case", "catch", "char", "char8_t", "char16_t", "char32_t",
-    "class", "compl", "concept", "const", "consteval", "constexpr", "constinit",
-    "const_cast", "continue", "co_await", "co_return", "co_yield", "decltype",
-    "default", "delete", "do", "double", "dynamic_cast", "else", "enum",
-    "explicit", "export", "extern", "false", "float", "for", "friend", "goto",
-    "if", "inline", "int", "long", "mutable", "namespace", "new", "noexcept",
-    "not", "not_eq", "nullptr", "operator", "or", "or_eq", "private", "protected",
-    "public", "register", "reinterpret_cast", "requires", "return", "short",
-    "signed", "sizeof", "static", "static_assert", "static_cast", "struct",
-    "switch", "template", "this", "thread_local", "throw", "true", "try",
-    "typedef", "typeid", "typename", "union", "unsigned", "using", "virtual",
-    "void", "volatile", "wchar_t", "while", "xor", "xor_eq"
+    "int", "float", "double", "char", "void", "bool", "string",
+    "if", "else", "while", "for", "return", "break", "continue",
+    "class", "struct", "public", "private", "protected",
+    "namespace", "using", "template", "typename", "const", "auto",
+    "nullptr", "true", "false", "new", "delete", "static", "virtual",
+    "operator", "sizeof", "switch", "case", "default", "try", "catch", "throw"
   ])
 
   @cpp_operators MapSet.new([
@@ -67,9 +29,7 @@ defmodule Hw.SyntaxHighlighterPro do
   @letters "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
   @hex_letters "abcdefABCDEF"
 
-  # --------------------------------------------------------------------------
-  # Escape de HTML
-  # --------------------------------------------------------------------------
+  # escapar caracteres especiales de HTML
 
   defp html_escape(text) do
     text
@@ -80,9 +40,7 @@ defmodule Hw.SyntaxHighlighterPro do
     |> String.replace("'", "&#39;")
   end
 
-  # --------------------------------------------------------------------------
-  # Envoltura de tokens en HTML
-  # --------------------------------------------------------------------------
+  # poner cada token en un span con su clase
 
   defp wrap_token(type, lexeme) do
     safe = html_escape(lexeme)
@@ -92,9 +50,7 @@ defmodule Hw.SyntaxHighlighterPro do
   defp emit_token(:space, char), do: char
   defp emit_token(type, lexeme), do: wrap_token(type, lexeme)
 
-  # --------------------------------------------------------------------------
-  # Clasificación de caracteres (sin regex por carácter)
-  # --------------------------------------------------------------------------
+  # clasificar cada caracter
 
   defp char_class(char) do
     cond do
@@ -117,9 +73,7 @@ defmodule Hw.SyntaxHighlighterPro do
   defp digit?(char), do: String.contains?(@digits, char)
   defp hex_letter?(char), do: String.contains?(@hex_letters, char)
 
-  # --------------------------------------------------------------------------
-  # Máquina de estados finitos (FSM) con pattern matching
-  # --------------------------------------------------------------------------
+  # maquina de estados
 
   defp tokenize([], state, lexeme, output) do
     if state in [:comment_block, :comment_block_star, :string, :string_esc, :char, :char_esc] do
@@ -284,9 +238,7 @@ defmodule Hw.SyntaxHighlighterPro do
     end
   end
 
-  # --------------------------------------------------------------------------
-  # Manejo de '.' y '/' al inicio
-  # --------------------------------------------------------------------------
+  # '.' puede ser numero o operador; '/' puede ser operador o comentario
 
   defp handle_dot_start([], output) do
     tokenize([], :operator, ".", output)
@@ -316,9 +268,7 @@ defmodule Hw.SyntaxHighlighterPro do
     tokenize(chars, :operator, "/", output)
   end
 
-  # --------------------------------------------------------------------------
-  # Auxiliares
-  # --------------------------------------------------------------------------
+  # auxiliares
 
   defp finalize_and_continue(chars, type, lexeme, output) do
     tokenize(chars, :start, "", output <> emit_token(type, lexeme))
@@ -337,9 +287,7 @@ defmodule Hw.SyntaxHighlighterPro do
   defp final_type(:char), do: :string
   defp final_type(_), do: :error
 
-  # --------------------------------------------------------------------------
-  # Procesamiento línea por línea manteniendo estado entre líneas
-  # --------------------------------------------------------------------------
+  # recorrer lineas conservando estado (para comentarios/strings multilinea)
 
   defp process_lines([], _state, _lexeme, output), do: output
 
@@ -354,9 +302,7 @@ defmodule Hw.SyntaxHighlighterPro do
     end
   end
 
-  # --------------------------------------------------------------------------
-  # Generación de HTML completo a partir de contenido
-  # --------------------------------------------------------------------------
+  # generar HTML de todo el archivo
 
   def highlight_content(content, template) do
     lines =
@@ -368,9 +314,7 @@ defmodule Hw.SyntaxHighlighterPro do
     String.replace(template, "{{result}}", body)
   end
 
-  # --------------------------------------------------------------------------
-  # Procesamiento de directorios: secuencial, paralelo y benchmark
-  # --------------------------------------------------------------------------
+  # procesar directorios
 
   defp find_source_files(input_dir) do
     cpp =
@@ -415,7 +359,7 @@ defmodule Hw.SyntaxHighlighterPro do
   end
 
   def benchmark(files, output_dir, template, runs \\ 5) do
-    IO.puts("Ejecutando benchmark con #{runs} corridas por versión (intercaladas)...\n")
+    IO.puts("Benchmark: #{runs} corridas de cada version...\n")
 
     {seq_times, par_times} =
       Enum.reduce(1..runs, {[], []}, fn _, {seq_acc, par_acc} ->
@@ -426,30 +370,12 @@ defmodule Hw.SyntaxHighlighterPro do
 
     avg_seq = Enum.sum(seq_times) / length(seq_times)
     avg_par = Enum.sum(par_times) / length(par_times)
-    min_seq = Enum.min(seq_times)
-    min_par = Enum.min(par_times)
-    max_seq = Enum.max(seq_times)
-    max_par = Enum.max(par_times)
     speedup = if avg_par > 0, do: avg_seq / avg_par, else: 0.0
 
-    IO.puts("Resultados del benchmark:")
-    IO.puts("  Archivos procesados : #{length(files)}")
-    IO.puts("  Corridas por versión: #{runs}")
-    IO.puts("")
-    IO.puts("  Secuencial:")
-    IO.puts("    Promedio : #{Float.round(avg_seq / 1000, 3)} ms")
-    IO.puts("    Mínimo   : #{Float.round(min_seq / 1000, 3)} ms")
-    IO.puts("    Máximo   : #{Float.round(max_seq / 1000, 3)} ms")
-    IO.puts("")
-    IO.puts("  Paralelo:")
-    IO.puts("    Promedio : #{Float.round(avg_par / 1000, 3)} ms")
-    IO.puts("    Mínimo   : #{Float.round(min_par / 1000, 3)} ms")
-    IO.puts("    Máximo   : #{Float.round(max_par / 1000, 3)} ms")
-    IO.puts("")
-    IO.puts("  Speedup (promedio)  : #{Float.round(speedup, 2)}x")
-    IO.puts("")
-
-    {seq_times, par_times}
+    IO.puts("Archivos: #{length(files)}")
+    IO.puts("Secuencial promedio: #{Float.round(avg_seq / 1000, 3)} ms")
+    IO.puts("Paralelo promedio:   #{Float.round(avg_par / 1000, 3)} ms")
+    IO.puts("Speedup:             #{Float.round(speedup, 2)}x\n")
   end
 
   def run(input_dir, output_dir, mode) do
@@ -478,9 +404,7 @@ defmodule Hw.SyntaxHighlighterPro do
   end
 end
 
-# ------------------------------------------------------------------------------
-# Interfaz de línea de comandos (CLI)
-# ------------------------------------------------------------------------------
+# CLI
 
 case System.argv() do
   ["-h"] ->
